@@ -1,15 +1,29 @@
-# query.py
+import os
+import logging
+
+# Keep third-party ML libraries quiet
+os.environ["TRANSFORMERS_VERBOSITY"] = "critical"
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+
+logging.getLogger("transformers").setLevel(logging.CRITICAL)
+logging.getLogger("huggingface_hub").setLevel(logging.CRITICAL)
 
 from sentence_transformers import SentenceTransformer
+
 import chromadb
 from openai import OpenAI
 import os
 import re
+from dotenv import load_dotenv
 
 # -------------------------------
 # 🔑 API KEY (set using env variable)
 # -------------------------------
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+load_dotenv(override=True)
+client = OpenAI(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+)
 
 # -------------------------------
 # 📌 STEP 1: Load Embedding Model
@@ -89,32 +103,33 @@ Generate:
     # ✅ Try OpenAI
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gemini-3.6-flash",
             messages=[{"role": "user", "content": prompt}]
         )
         return "🤖 LLM Mode: OpenAI\n\n" + response.choices[0].message.content
 
     # ❌ Fallback
-    except Exception:
-        print("\n⚠️ API failed, using fallback AI...\n")
+    except Exception as e:
+       print("\n⚠️ API failed!")
+       print("ERROR:", e)
+       print("\nUsing fallback AI...\n")
 
-        report = "🤖 LLM Mode: Fallback (No API)\n\n"
-        report += "🚨 INCIDENT REPORT\n\n"
+    report = "🤖 LLM Mode: Fallback (No API)\n\n"
+    report += "🚨 INCIDENT REPORT\n\n"
 
-        ips = {}
-        ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
+    ips = {}
+    ip_pattern = r"\b(?:\d{1,3}\.){3}\d{1,3}\b"
 
-        for chunk in log_chunks:
-            for line in chunk.split("\n"):
-                matches = re.findall(ip_pattern, line)
-                for ip in matches:
-                    ips[ip] = ips.get(ip, 0) + 1
+    for chunk in log_chunks:
+      for line in chunk.split("\n"):
+        matches = re.findall(ip_pattern, line)
+        for ip in matches:
+            ips[ip] = ips.get(ip, 0) + 1
 
-        sorted_ips = sorted(ips.items(), key=lambda x: x[1], reverse=True)
-
-        report += "🌐 Suspicious IPs:\n"
-        for ip, count in sorted_ips[:3]:
-            report += f"- {ip} ({count} events)\n"
+    sorted_ips = sorted(ips.items(), key=lambda x: x[1], reverse=True)
+    report += "🌐 Suspicious IPs:\n"
+    for ip, count in sorted_ips[:3]:
+        report += f"- {ip} ({count} events)\n"
 
         report += "\n⚠️ Attack Type:\n"
         if "failed" in context.lower():
